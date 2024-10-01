@@ -4,6 +4,8 @@ import smtplib, csv, schedule, time, os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import config
+import tkinter as tk
+from tkinter import messagebox
 
 # ------------------------ Config ------------------------ #
 
@@ -15,7 +17,112 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9"
 }
 
+# ------------------------ CSV Config ------------------------ #
+
 CSV_FILE = 'products.csv'
+
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Product URL", "Target Price"])
+
+# Add products to CSV
+def add_product():
+    product_url = url_entry.get()
+    target_price = price_entry.get()
+
+    if not product_url or not target_price:
+        messagebox.showwarning("Input Error", "Please fill in both fields.")
+        return
+    
+    try:
+        target_price = float(target_price)
+    except ValueError:
+        messagebox.showwarning("Input Error", "Target price must be a number.")
+        return
+    
+    # Append the products to the CSV file
+    with open(CSV_FILE, 'a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([product_url, target_price])
+
+    # Clear the input fields
+    url_entry.delete(0, tk.END)
+    price_entry.delete(0, tk.END)
+
+    # Update the product list
+    update_product_list()
+
+# Function to remove a product from the CSV
+def remove_product():
+    selected = product_listbox.curselection()
+    if not selected:
+        messagebox.showwarning("Selection Error", "Please select a product to remove.")
+        return
+    
+    # Get selected product's URL
+    selected_index = selected[0]
+    selected_url = product_list[selected_index][0]
+
+    # Remove the selected product from the CSV file
+    with open(CSV_FILE, 'r') as file:
+        rows = list(csv.reader(file))
+
+    with open(CSV_FILE, 'w', newline='') as file:
+        writer = csv.writer(file)
+        for row in rows:
+            if row[0] != selected_url:
+                writer.writerow(row)
+
+    # Update the product list
+    update_product_list()
+
+# Function to update the product list in the listbox
+def update_product_list():
+    global product_list
+    product_listbox.delete(0, tk.END)  # Clear listbox
+
+    # Load products from CSV file
+    with open(CSV_FILE, 'r') as file:
+        reader = csv.reader(file)
+        product_list = list(reader)[1:]  # Skip header row
+
+    # Add products to the listbox
+    for product in product_list:
+        product_listbox.insert(tk.END, f"{product[0]} (Target: {product[1]})")
+
+# -------------------------------------------------------- #
+
+# GUI setup
+root = tk.Tk()
+root.title("Amazon Price Tracker")
+
+# Labels and Entry fields for Product URL and Target Price
+tk.Label(root, text="Product URL:").grid(row=0, column=0, padx=10, pady=5)
+url_entry = tk.Entry(root, width=50)
+url_entry.grid(row=0, column=1, padx=10, pady=5)
+
+tk.Label(root, text="Target Price:").grid(row=1, column=0, padx=10, pady=5)
+price_entry = tk.Entry(root, width=20)
+price_entry.grid(row=1, column=1, padx=10, pady=5)
+
+# Buttons for adding and removing products
+add_button = tk.Button(root, text="Add Product", command=add_product)
+add_button.grid(row=2, column=0, padx=10, pady=10)
+
+remove_button = tk.Button(root, text="Remove Product", command=remove_product)
+remove_button.grid(row=2, column=1, padx=10, pady=10)
+
+# Listbox to display tracked products
+product_listbox = tk.Listbox(root, width=80, height=10)
+product_listbox.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+
+# Initialize the product list
+product_list = []
+update_product_list()
+
+# Start the GUI loop
+root.mainloop()
 
 # -------------------------------------------------------- #
 
@@ -106,17 +213,28 @@ def get_product_name(url):
     """Fetch the product name from the Amazon page."""
     try:
         response = requests.get(url, headers=HEADERS)
-        if response.status.code != 200:
-            print(f"Failed to fetch page for URL: {url}")
+        
+        # Check if the request was successful
+        if response.status_code != 200:
+            print(f"Failed to fetch page for URL: {url}, Status Code: {response.status_code}")
             return "Unknown Product"
         
+        # Parse the HTML content using BeautifulSoup
         soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Look for the product title by its ID
         title = soup.find(id='productTitle')
         if title:
             return title.get_text().strip()
         else:
+            print(f"Product title not found for URL: {url}")
             return "Unknown Product"
-    except:
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Request error occurred: {str(e)}")
+        return "Unknown Product"
+    except Exception as e:
+        print(f"An error occurred while fetching product name: {str(e)}")
         return "Unknown Product"
     
 def check_prices():
