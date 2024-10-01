@@ -101,5 +101,63 @@ def read_products(csv_file):
     return products
 
 def get_product_name(url):
+    """Fetch the product name from the Amazon page."""
+    try:
+        response = requests.get(url, headers=HEADERS)
+        if response.status.code != 200:
+            print(f"Failed to fetch page for URL: {url}")
+            return "Unknown Product"
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        title = soup.find(id='productTitle')
+        if title:
+            return title.get_text().strip()
+        else:
+            return "Unknown Product"
+    except:
+        return "Unknown Product"
+    
+def check_prices():
+    """Check the price of all products and send email if necessary"""
+    products = read_products(CSV_FILE)
+    for product in products:
+        url = product['url']
+        target_price = product['target_price']
+        print(f"Checking price for: {url}")
 
+        price = get_price(url)
+        if price is None:
+            print(f"Could not retrieve price for {url}")
+            continue
 
+        # Get product name if not already fetched
+        if not product['name']:
+            product['name'] = get_product_name(url)
+
+        print(f"Current price: ${price} | Target price: ${target_price}")
+
+        if price <= target_price:
+            subject = f"Price Alert: {product['name']} is now ${price}"
+            body = f"The price for {product['name']} has dropped to ${price}.\n\nLink: {url}"
+            send_email(subject, body)
+        else:
+            print(f"No price drop for {product['name']}.")
+
+def main():
+    """Main function to schedule price checks."""
+    # Initial check
+    check_prices()
+
+    # Schedule to check every X hours.
+    schedule.every(24).hours.do(check_prices)
+
+    print("Price tracker is running. Press Ctrl+C to exit")
+    try:
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Price tracker stopped.")
+
+if __name__ == '__main__':
+    main()
