@@ -44,36 +44,43 @@ def send_email(subject, body):
     except Exception as e:
         print(f"Failed to send email: {e}")
 
-def get_price(url):
-    """Fetch the current price of the Amazon product."""
-    try:
-        response = requests.get(url, headers=HEADERS)
-        if response.status_code != 200:
-            print(f"Failed to fetch page for URL: {url}")
-            return None
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
+def get_price(url, retries=3):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36"
+    }
+    attempt = 0
+    while attempt < retries:
+        try:
+            response = requests.get(url, headers=headers)
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-        # Attempt to find the price in different possible HTML elements
-        price = None
-        # Common ID for price
-        price_tag = soup.find(id='priceblock_ourprice') or soup.find(id='priceblock_dealprice')
-        if price_tag:
-            price_text = price_tag.get_text().strip()
-            price = parse_price(price_text)
-        else:
-            # Alternative method: Look for span with class 'a-offscreen'
-            price_tags = soup.find_all('span', {'class': 'a-offscreen'})
-            for tag in price_tags:
-                price_text = tag.get_text().strip()
-                price = parse_price(price_text)
-                if price:
-                    break
+            # Look for the whole price
+            price_whole = soup.find('span', class_='a-price-whole')
+            price_fraction = soup.find('span', class_='a-price-fraction')
 
-        return price
-    except Exception as e:
-        print(f"Error fetching price for {url}: {e}")
-        return None
+            if price_whole:
+                # Clean the price parts (remove commas and strip spaces)
+                price_whole = price_whole.get_text().strip().replace(',', '')
+
+                # Ensure the price whole part does not have any decimal points already
+                if '.' not in price_whole:
+                    # If there's a fraction part (like cents), append it; otherwise, default to '.00'
+                    if price_fraction:
+                        price_fraction = price_fraction.get_text().strip()
+                        price = f"{price_whole}.{price_fraction}"
+                    else:
+                        price = f"{price_whole}.00"
+                else:
+                    price = price_whole
+                
+                return float(price)
+
+        except Exception as e:
+            print(f"Error retrieving price for {url}: {e}")
+            attempt += 1
+            time.sleep(5)
+    return None
+
     
 def parse_price(price_str):
     """Parse the price string to a float"""
