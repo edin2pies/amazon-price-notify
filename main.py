@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import smtplib, csv, schedule, time, os, config, threading, queue
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 
@@ -104,8 +105,9 @@ def update_product_list():
 
 # Function to append messages to the log_text
 def log_message(message):
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     log_text.configure(state='normal')
-    log_text.insert(tk.END, message)
+    log_text.insert(tk.END, f"[{timestamp}] {message}")
     log_text.configure(state='disabled')
     log_text.see(tk.END)
 
@@ -137,6 +139,10 @@ add_button.grid(row=2, column=0, padx=10, pady=10, sticky=tk.E)
 
 remove_button = tk.Button(root, text="Remove Product", command=remove_product)
 remove_button.grid(row=2, column=1, padx=10, pady=10, sticky=tk.W)
+
+# Button for checking price now
+check_now_button = tk.Button(root, text="Check Prices Now", command=lambda: threading.Thread(target=check_prices, daemon=True).start())
+check_now_button.grid(row=2, column=2, padx=10, pady=10, sticky=tk.W)
 
 # Listbox to display tracked products
 product_listbox = tk.Listbox(root, width=80, height=10)
