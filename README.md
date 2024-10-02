@@ -97,7 +97,7 @@ A Python-based GUI application to monitor and track prices of products on Amazon
 1. **Run the Application**
 
     ```bash
-    python price_tracker.py
+    python main.py
     ```
 
 2. **Using the GUI**
@@ -127,6 +127,11 @@ A Python-based GUI application to monitor and track prices of products on Amazon
         - Logs will display the status of each product check and any email notifications sent.
 
 ### Troubleshooting
-    - Failed to Send Email
-        - Cause: Incorrect SMTP settings or invalid email credentials.
-        - Solution: Double-check your config.py for correct email address, password, SMTP server, and port. If using Gmail, ensure Apasswords are set up correctly.
+
+1. Failed to Send Email
+    - Cause: Incorrect SMTP settings or invalid email credentials.
+    - Solution: Double-check your config.py for correct email address, password, SMTP server, and port. If using Gmail, ensure App Passwords are set up correctly.
+
+## Contributing
+
+Feel free to fork the project, make improvements, and submit pull requests.
