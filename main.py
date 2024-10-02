@@ -1,11 +1,11 @@
 import requests
 from bs4 import BeautifulSoup
-import smtplib, csv, schedule, time, os, config, threading, queue
+import smtplib, csv, schedule, time, os, config, threading, queue, re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
 import tkinter as tk
-from tkinter import messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext, simpledialog
 
 # ------------------------ Config ------------------------ #
 
@@ -47,6 +47,11 @@ def add_product():
         messagebox.showwarning("Input Error", "Target price must be a number.")
         return
     
+    # Validate the Amazon URL
+    if not validate_amazon_url(product_url):
+        messagebox.showwarning("Input Error", "Please enter a valid Amazon product URL.")
+        return
+    
     # Append the products to the CSV file
     with open(CSV_FILE, 'a', newline='') as file:
         writer = csv.writer(file)
@@ -59,8 +64,8 @@ def add_product():
     # Update the product list
     update_product_list()
 
-    # Log the addition
-    gui_queue.put(f"Added product: {product_url} with target price ${target_price}\n")
+     # Log the addition
+    gui_queue.put(("INFO", f"Added product: {shorten_url(product_url)} with target price ${target_price}\n"))
 
 # Function to remove a product from the CSV
 def remove_product():
@@ -72,12 +77,13 @@ def remove_product():
     # Get selected product's URL
     selected_index = selected[0]
     selected_url = product_list[selected_index][0]
+    selected_url = selected_product['url']
 
     # Remove the selected product from the CSV file
-    with open(CSV_FILE, 'r') as file:
+    with open(CSV_FILE, 'r', newline='', encoding='utf-8') as file:
         rows = list(csv.reader(file))
 
-    with open(CSV_FILE, 'w', newline='') as file:
+    with open(CSV_FILE, 'w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         for row in rows:
             if row[0] != selected_url:
@@ -87,7 +93,7 @@ def remove_product():
     update_product_list()
 
     # Log the removal
-    gui_queue.put(f"Removed product: {selected_url}\n")
+    gui_queue.put(("INFO", f"Removed product: {shorten_url(selected_url)}\n"))
 
 def edit_product():
     selected = product_listbox.curselection()
@@ -97,61 +103,54 @@ def edit_product():
     
     selected_index = selected[0]
     selected_product = product_list[selected_index]
-    
-    # Create a new window for editing
-    edit_window = tk.Toplevel(root)
-    edit_window.title("Edit Product")
-    
-    # Labels and Entry fields pre-filled with current values
-    tk.Label(edit_window, text="Product URL:").grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
-    edit_url_entry = tk.Entry(edit_window, width=50)
-    edit_url_entry.grid(row=0, column=1, padx=10, pady=5)
-    edit_url_entry.insert(0, selected_product['url'])
-    
-    tk.Label(edit_window, text="Target Price:").grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
-    edit_price_entry = tk.Entry(edit_window, width=20)
-    edit_price_entry.grid(row=1, column=1, padx=10, pady=5, sticky=tk.W)
-    edit_price_entry.insert(0, selected_product['target_price'])
+    selected_url = selected_product['url']
+    selected_target_price = selected_product['target_price']
 
-    def save_edits():
-        new_url = edit_url_entry.get()
-        new_target_price = edit_price_entry.get()
-        
-        if not new_url or not new_target_price:
-            messagebox.showwarning("Input Error", "Please fill in both fields.")
-            return
-        
-        try:
-            new_target_price = float(new_target_price)
-        except ValueError:
-            messagebox.showwarning("Input Error", "Target price must be a number.")
-            return
-        
-        # Update the CSV file
-        with open(CSV_FILE, 'r') as file:
-            rows = list(csv.reader(file))
-        
-        with open(CSV_FILE, 'w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(["Product URL", "Target Price"])  # Write header
-            for row in rows[1:]:  # Skip header
-                if row[0] == selected_product['url']:
-                    writer.writerow([new_url, new_target_price])
-                else:
-                    writer.writerow(row)
-        
+    # Prompt user for new URL and target price
+    new_url = simpledialog.askstring("Edit Product", "Enter new Product URL:", initialvalue=selected_url)
+    if new_url is None:
+        return  # User cancelled
+
+    new_target_price = simpledialog.askstring("Edit Product", "Enter new Target Price:", initialvalue=str(selected_target_price))
+    if new_target_price is None:
+        return  # User cancelled
+
+    # Validate inputs
+    if not new_url or not new_target_price:
+        messagebox.showwarning("Input Error", "Please fill in both fields.")
+        return
+    
+    try:
+        new_target_price = float(new_target_price)
+    except ValueError:
+        messagebox.showwarning("Input Error", "Target price must be a number.")
+        return
+
+    if not validate_amazon_url(new_url):
+        messagebox.showwarning("Input Error", "Please enter a valid Amazon product URL.")
+        return
+
+    # Update the CSV file
+    updated = False
+    with open(CSV_FILE, 'r', newline='', encoding='utf-8') as file:
+        rows = list(csv.reader(file))
+    
+    with open(CSV_FILE, 'w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        for row in rows:
+            if row[0] == selected_url:
+                writer.writerow([new_url, new_target_price])
+                updated = True
+            else:
+                writer.writerow(row)
+    
+    if updated:
         # Update the product list
         update_product_list()
-        
         # Log the edit
-        gui_queue.put(("info", f"Edited product: {selected_product['url']} to {new_url} with target price ${new_target_price}\n"))
-        
-        # Close the edit window
-        edit_window.destroy()
-    
-    # Save button
-    save_button = tk.Button(edit_window, text="Save", command=save_edits)
-    save_button.grid(row=2, column=0, columnspan=2, pady=10)
+        gui_queue.put(("INFO", f"Edited product: {shorten_url(new_url)} with new target price ${new_target_price}\n"))
+    else:
+        messagebox.showerror("Edit Error", "Failed to find the selected product in the CSV file.")
 
 # Function to update the product list in the listbox
 def update_product_list():
@@ -159,34 +158,55 @@ def update_product_list():
     product_listbox.delete(0, tk.END)  # Clear listbox
 
      # Load products from CSV file
-    with open(CSV_FILE, 'r') as file:
+    with open(CSV_FILE, 'r', newline='', encoding='utf-8') as file:
         reader = csv.reader(file)
-        product_list = []
-        for row in list(reader)[1:]:  # Skip header row
-            product_list.append({
-                'url': row[0],
-                'target_price': float(row[1]),
-                'name': ''  # Will be filled later
-            })
+        product_list = list(reader)[1:]  # Skip header row
 
     # Add products to the listbox
     for product in product_list:
-        product_listbox.insert(tk.END, f"{product['url']} (Target: ${product['target_price']})")
+        display_url = shorten_url(product[0])
+        product_listbox.insert(tk.END, f"{display_url} (Target: ${product[1]})")
+
+def shorten_url(url):
+    """
+    Shortens the Amazon URL to include only up to the ASIN.
+    Example:
+    Input: https://www.amazon.com/.../dp/B0889FJT19/ref=...
+    Output: https://www.amazon.com/.../dp/B0889FJT19
+    """
+    match = re.match(r'(https?://www\.amazon\.com/.*/dp/[A-Z0-9]{10})', url)
+    if match:
+        return match.group(1)
+    else:
+        return url  # Return original if pattern not found
+
+def validate_amazon_url(url):
+    """Validates if the URL is a proper Amazon product URL."""
+    pattern = r'^https?://www\.amazon\.com/.*/dp/[A-Z0-9]{10}.*$'
+    return re.match(pattern, url) is not None
+
+# -------------------------------------------------------- #
 
 # Function to append messages to the log_text with color-coding
 def log_message(message_type, message):
+    """
+    Logs messages to the scrolledtext widget with color-coding.
+    message_type: "INFO", "SUCCESS", "ERROR"
+    message: The message string to log
+    """
+        
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     formatted_message = f"[{timestamp}] {message}"
     
     # Define tag based on message type
-    if message_type == "info":
-        tag = "info"
-    elif message_type == "success":
-        tag = "success"
-    elif message_type == "error":
-        tag = "error"
+    if message_type == "INFO":
+        tag = "INFO"
+    elif message_type == "SUCCESS":
+        tag = "SUCCESS"
+    elif message_type == "ERROR":
+        tag = "ERROR"
     else:
-        tag = "info"  # Default tag
+        tag = "INFO"  # Default tag
     
     log_text.configure(state='normal')
     log_text.insert(tk.END, formatted_message, tag)
@@ -202,14 +222,22 @@ def process_queue():
 
 # ------------------------ GUI Setup ------------------------ #
 
-# Create the main window
+# Create a GUI window
 root = tk.Tk()
 root.title("Amazon Price Tracker")
+
+# Define tags for color-coding
+log_text = scrolledtext.ScrolledText(root, width=80, height=15, state='disabled')
+log_text.grid(row=5, column=0, columnspan=4, padx=10, pady=10)
+
+log_text.tag_config("INFO", foreground="blue")
+log_text.tag_config("SUCCESS", foreground="green")
+log_text.tag_config("ERROR", foreground="red")
 
 # Labels and Entry fields for Product URL and Target Price
 tk.Label(root, text="Product URL:").grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
 url_entry = tk.Entry(root, width=50)
-url_entry.grid(row=0, column=1, padx=10, pady=5)
+url_entry.grid(row=0, column=1, padx=10, pady=5, columnspan=2, sticky=tk.W)
 
 tk.Label(root, text="Target Price:").grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
 price_entry = tk.Entry(root, width=20)
@@ -230,17 +258,8 @@ check_now_button = tk.Button(root, text="Check Prices Now", command=lambda: thre
 check_now_button.grid(row=2, column=3, padx=10, pady=10, sticky=tk.W)
 
 # Listbox to display tracked products
-product_listbox = tk.Listbox(root, width=100, height=10)
+product_listbox = tk.Listbox(root, width=80, height=10)
 product_listbox.grid(row=3, column=0, columnspan=4, padx=10, pady=10)
-
-# Scrollable Text area for logs/output with color-coding tags
-log_text = scrolledtext.ScrolledText(root, width=100, height=15, state='disabled')
-log_text.grid(row=4, column=0, columnspan=4, padx=10, pady=10)
-
-# Define tags for color-coding
-log_text.tag_config('info', foreground='blue')
-log_text.tag_config('success', foreground='green')
-log_text.tag_config('error', foreground='red')
 
 # Initialize the product list
 product_list = []
@@ -268,9 +287,9 @@ def send_email(subject, body):
         server.sendmail(config.EMAIL_ADDRESS, config.EMAIL_ADDRESS, text)
         server.quit()
         # Log the email sent
-        gui_queue.put(("success", f"Email sent: {subject}\n"))
+        gui_queue.put(("SUCCESS", f"Email sent: {subject}\n"))
     except Exception as e:
-        gui_queue.put(("error", f"Failed to send email: {e}\n"))
+        gui_queue.put(("ERROR", f"Failed to send email: {e}\n"))
 
 def get_price(url, retries=3):
     headers = {
@@ -306,7 +325,7 @@ def get_price(url, retries=3):
                 return float(price)
 
         except Exception as e:
-            gui_queue.put(("error", f"Error retrieving price for {url}: {e}\n"))
+            gui_queue.put(("ERROR", f"Error retrieving price for {shorten_url(url)}: {e}\n"))
             attempt += 1
             time.sleep(5)
     return None
@@ -334,7 +353,7 @@ def read_products(csv_file):
                     'name': '' # Will be filled later
                 })
     except Exception as e:
-        gui_queue.put(("error", f"Error reading CSV file: {e}\n"))
+        gui_queue.put(("ERROR", f"Error reading CSV file: {e}\n"))
     return products
 
 def get_product_name(url):
@@ -344,7 +363,7 @@ def get_product_name(url):
         
         # Check if the request was successful
         if response.status_code != 200:
-            gui_queue.put(("error", f"Failed to fetch page for URL: {url}, Status Code: {response.status_code}\n"))
+            gui_queue.put(("ERROR", f"Failed to fetch page for URL: {shorten_url(url)}, Status Code: {response.status_code}\n"))
             return "Unknown Product"
         
         # Parse the HTML content using BeautifulSoup
@@ -354,17 +373,17 @@ def get_product_name(url):
         title = soup.find(id='productTitle')
         if title:
             product_name = title.get_text().strip()
-            gui_queue.put(("info", f"Fetched product name: '{product_name}' for URL: {url}\n"))
+            gui_queue.put(("INFO", f"Fetched product name: '{product_name}' for URL: {shorten_url(url)}\n"))
             return product_name
         else:
-            gui_queue.put(("error", f"Product title not found for URL: {url}\n"))
+            gui_queue.put(("ERROR", f"Product title not found for URL: {shorten_url(url)}\n"))
             return "Unknown Product"
     
     except requests.exceptions.RequestException as e:
-        gui_queue.put(("error", f"Request error occurred: {str(e)}\n"))
+        gui_queue.put(("ERROR", f"Request error occurred: {str(e)}\n"))
         return "Unknown Product"
     except Exception as e:
-        gui_queue.put(("error", f"An error occurred while fetching product name: {str(e)}\n"))
+        gui_queue.put(("ERROR", f"An error occurred while fetching product name: {str(e)}\n"))
         return "Unknown Product"
     
 def check_prices():
@@ -373,25 +392,25 @@ def check_prices():
     for product in products:
         url = product['url']
         target_price = product['target_price']
-        gui_queue.put(("info", f"Checking price for: {url}\n"))
+        gui_queue.put(("INFO", f"Checking price for: {shorten_url(url)}\n"))
 
         price = get_price(url)
         if price is None:
-            gui_queue.put(("error", f"Could not retrieve price for {url}\n"))
+            gui_queue.put(("ERROR", f"Could not retrieve price for {shorten_url(url)}\n"))
             continue
 
         # Get product name if not already fetched
         if not product['name']:
             product['name'] = get_product_name(url)
 
-        gui_queue.put(("info", f"Current price: ${price} | Target price: ${target_price}\n"))
+        gui_queue.put(("INFO", f"Current price: ${price} | Target price: ${target_price}\n"))
 
         if price <= target_price:
             subject = f"Price Alert: {product['name']} is now ${price}"
             body = f"The price for '{product['name']}' has dropped to ${price}.\n\nLink: {url}"
             send_email(subject, body)
         else:
-            gui_queue.put(("info", f"No price drop for '{product['name']}'.\n"))
+            gui_queue.put(("INFO", f"No price drop for '{product['name']}'.\n"))
 
 def schedule_checks():
     """Schedule price checks every 24 hours."""
@@ -404,6 +423,7 @@ def start_scheduler():
     """Start the scheduler in a separate thread."""
     scheduler_thread = threading.Thread(target=schedule_checks, daemon=True)
     scheduler_thread.start()
+
 
 # -------------------------------------------------------- #
 
