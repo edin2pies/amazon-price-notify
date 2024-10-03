@@ -34,7 +34,7 @@ A Python-based GUI application to monitor and track prices of products on Amazon
 
 ## Demo
 
-![Demo GIF](screenshots/demo.gif.mp4)
+![Demo GIF](screenshots/demo.gif)
 
 ## Installation
 
