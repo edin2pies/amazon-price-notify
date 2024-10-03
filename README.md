@@ -2,7 +2,7 @@
 
 A Python-based GUI application to monitor and track prices of products on Amazon. Receive real-time email notifications when the price of your desired products drops below your target prices. Manage your product list easily with functionalities to add, remove, and edit products directly from the user-friendly interface.
 
-![Amazon Price Tracker Screenshot](screenshots/screenshot.png) <!-- Replace with your actual screenshot -->
+![Amazon Price Tracker Screenshot](screenshots/price_tracker.PNG)
 
 ## Table of Contents
 
